@@ -1,0 +1,88 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AutoScan</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #111318;
+      color: white;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+
+    h1 { color: #83e5ac; }
+
+    video {
+      width: 100%;
+      max-width: 500px;
+      border-radius: 16px;
+      background: #292d33;
+    }
+
+    button {
+      margin: 12px 5px;
+      padding: 14px 20px;
+      border: 0;
+      border-radius: 10px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    #start { background: #83e5ac; }
+    #stop { background: #383c45; color: white; }
+
+    #status { color: #c6c9d0; }
+  </style>
+</head>
+<body>
+  <h1>AutoScan</h1>
+  <p>Scanner de voitures</p>
+
+  <video id="camera" autoplay playsinline muted></video>
+
+  <div>
+    <button id="start">Activer la caméra</button>
+    <button id="stop">Arrêter</button>
+  </div>
+
+  <p id="status">Caméra désactivée</p>
+
+  <script>
+    const camera = document.getElementById("camera");
+    const status = document.getElementById("status");
+    let stream = null;
+
+    document.getElementById("start").onclick = async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" }
+          },
+          audio: false
+        });
+
+        camera.srcObject = stream;
+        status.textContent = "Caméra active — prêt à scanner";
+      } catch (error) {
+        status.textContent =
+          "Impossible d'ouvrir la caméra : " + error.message;
+      }
+    };
+
+    document.getElementById("stop").onclick = () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        camera.srcObject = null;
+        stream = null;
+      }
+
+      status.textContent = "Caméra désactivée";
+    };
+  </script>
+</body>
+</html>
