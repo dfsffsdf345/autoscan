@@ -5,10 +5,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AutoScan</title>
+
   <style>
     body {
       margin: 0;
-      padding: 24px;
+      padding: 20px;
       background: #111318;
       color: white;
       font-family: Arial, sans-serif;
@@ -20,68 +21,144 @@
     video {
       width: 100%;
       max-width: 500px;
-      border-radius: 16px;
+      border-radius: 14px;
       background: #292d33;
     }
 
     button {
-      margin: 12px 5px;
-      padding: 14px 20px;
+      padding: 14px;
+      margin: 8px;
       border: 0;
       border-radius: 10px;
       font-size: 16px;
-      cursor: pointer;
     }
 
     #start { background: #83e5ac; }
     #stop { background: #383c45; color: white; }
 
+    #result {
+      font-size: 24px;
+      color: #83e5ac;
+      overflow-wrap: anywhere;
+    }
+
     #status { color: #c6c9d0; }
   </style>
 </head>
+
 <body>
   <h1>AutoScan</h1>
-  <p>Scanner de voitures</p>
+  <p>Pointe la caméra vers une plaque immobile.</p>
 
   <video id="camera" autoplay playsinline muted></video>
 
   <div>
-    <button id="start">Activer la caméra</button>
+    <button id="start">Démarrer le scan</button>
     <button id="stop">Arrêter</button>
   </div>
 
-  <p id="status">Caméra désactivée</p>
+  <p id="status">En attente</p>
+  <p id="result">Aucune plaque reconnue</p>
+
+  <canvas id="canvas" hidden></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
   <script>
     const camera = document.getElementById("camera");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
     const status = document.getElementById("status");
+    const result = document.getElementById("result");
+
     let stream = null;
+    let worker = null;
+    let running = false;
+    let scanning = false;
+    let lastPlate = "";
+
+    function findPlate(text) {
+      const clean = text.toUpperCase()
+        .replace(/[^A-Z0-9]/g, "");
+
+      const match = clean.match(
+        /[A-Z]{2}[0-9]{3}[A-Z]{2}/g
+      );
+
+      return match ? match[0] : null;
+    }
 
     document.getElementById("start").onclick = async () => {
+      if (running) return;
+
       try {
+        running = true;
+        status.textContent = "Ouverture de la caméra...";
+
         stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: "environment" }
-          },
+          video: { facingMode: { ideal: "environment" } },
           audio: false
         });
 
         camera.srcObject = stream;
-        status.textContent = "Caméra active — prêt à scanner";
+        await camera.play();
+
+        status.textContent = "Chargement de la reconnaissance...";
+
+        worker = await Tesseract.createWorker("eng");
+
+        status.textContent = "Scan automatique en cours";
+
+        while (running) {
+          if (camera.readyState >= 2 && !scanning) {
+            scanning = true;
+
+            try {
+              canvas.width = camera.videoWidth;
+              canvas.height = camera.videoHeight;
+
+              ctx.drawImage(camera, 0, 0);
+
+              const { data } = await worker.recognize(canvas);
+              const plate = findPlate(data.text);
+
+              if (plate && plate !== lastPlate) {
+                lastPlate = plate;
+                result.textContent = plate;
+                status.textContent = "Texte ressemblant à une plaque détecté";
+              }
+            } catch (error) {
+              status.textContent = "Erreur pendant le scan";
+            }
+
+            scanning = false;
+          }
+
+          await new Promise(resolve => setTimeout(resolve, 1200));
+        }
       } catch (error) {
-        status.textContent =
-          "Impossible d'ouvrir la caméra : " + error.message;
+        running = false;
+        status.textContent = "Erreur : " + error.message;
       }
     };
 
-    document.getElementById("stop").onclick = () => {
+    document.getElementById("stop").onclick = async () => {
+      running = false;
+
       if (stream) {
         stream.getTracks().forEach(track => track.stop());
-        camera.srcObject = null;
         stream = null;
       }
 
-      status.textContent = "Caméra désactivée";
+      camera.srcObject = null;
+
+      if (worker) {
+        const oldWorker = worker;
+        worker = null;
+        await oldWorker.terminate();
+      }
+
+      status.textContent = "Scan arrêté";
     };
   </script>
 </body>
